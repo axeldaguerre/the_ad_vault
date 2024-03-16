@@ -27,12 +27,9 @@ typedef struct ColumnData ColumnData;
 struct ColumnData 
 {
   ColumnType type;
-  Textual    textual;
+  TextType   text_type;
   String8    value;
   String8    name;
-  int        byte_count;
-  int        value_int;
-  float      value_float;
 };
 
 typedef struct ColumnDataNode ColumnDataNode;
@@ -69,20 +66,5 @@ struct StateDB
 };
 
 
-internal Textual 
-database_get_textual(String8 name, Textual textual_table[])
-{
-  Textual result = {0};
-  for(U8 idx = 0; idx < ArrayCount(textual_table); ++idx)
-  {
-    Textual textual = textual_table[idx];
-    if(str8_match(name, textual.text, 0))
-    {
-      result = textual;
-      break;
-    }
-  }
-  return result;
-}
 
 #endif

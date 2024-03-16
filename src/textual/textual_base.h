@@ -51,4 +51,19 @@ enum
   FileFormatType_TXT   = (1 << 2),
 };
 
+typedef struct TextualTable TextualTable;
+struct TextualTable
+{
+  Textual *textuals;
+  U8       count;
+};
+
+internal TextualTable*
+textual_get_table(Arena *arena, Textual *raw_table, U32 size)
+{
+    TextualTable *table = push_array(arena, TextualTable, 1);
+    table->count = size;
+    table->textuals = raw_table;
+    return table;
+}
 #endif

@@ -76,8 +76,8 @@ sqlite_init(Arena *arena, String8 lib_path, String8 db_path, StateDB *state)
 internal B32
 sqlite_prepare_query(String8 query, StateDB *state)
 {
-  B32 result = 1;
-  SQLiteState *sqlite_state = (SQLiteState *)state;
+  B32 result = 1;  
+  SQLiteState *sqlite_state = (SQLiteState *)state->memory;
   if(sqlite_state->api.prepare_query(sqlite_state->db, (char *)query.str, -1, &sqlite_state->statement, NULL)) 
   {
       result = 0;
@@ -89,7 +89,7 @@ internal String8
 sqlite_get_column_name(StateDB *state, int col_idx)
 {
   String8 result = {0};
-  SQLiteState *sqlite_state = (SQLiteState *)state;
+  SQLiteState *sqlite_state = (SQLiteState *)state->memory;
   const char * column_name = sqlite_state->api.col_name(sqlite_state->statement, col_idx);
   result = str8_cstring((char *)column_name);
   return result;
@@ -99,22 +99,23 @@ internal int
 sqlite_step_query(StateDB *state)
 {
   int result = 0;
-  SQLiteState *sqlite_state = (SQLiteState *)state;
+  SQLiteState *sqlite_state = (SQLiteState *)state->memory;
   result = sqlite_state->api.step_query(sqlite_state->statement);
   return result;
 }
 
 internal ColumnData
 sqlite_column_value(Arena *arena, int column_idx, StateDB *state, 
-                    Textual column_meaning_table[]) 
+                    TextualTable *column_meaning_table) 
 {
   ColumnData result = {0};
-  SQLiteState *sqlite_state = (SQLiteState *)state;
-  result.name    = sqlite_get_column_name(state, column_idx);
-  result.textual = database_get_textual(result.name, column_meaning_table);
+  SQLiteState *sqlite_state = (SQLiteState *)state->memory;
   
-  int colType        = sqlite_state->api.column_type(sqlite_state->statement, column_idx);
-  result.byte_count  = sqlite_state->api.column_bytes(sqlite_state->statement, column_idx);
+  int colType      = sqlite_state->api.column_type(sqlite_state->statement, column_idx);
+  result.name      = sqlite_get_column_name(state, column_idx);
+  result.text_type = textual_type_from_name(result.name, column_meaning_table);
+  
+  if(result.text_type == TextType_Null) return result;
   
   switch(colType) 
   {
@@ -139,7 +140,7 @@ sqlite_column_value(Arena *arena, int column_idx, StateDB *state,
       result.type = ColumnType_Text;
       const unsigned char *value = sqlite_state->api.column_text(sqlite_state->statement, column_idx);
       String8 text = str8_cstring((char *)value);
-      if(result.textual.type == TextType_Title)
+      if(result.text_type == TextType_Title)
       {
         text = str8_from_last_slash(text);
         text = push_str8_copy(arena, str8_chop_last_dot(text));
@@ -178,9 +179,9 @@ database_column_list_push(Arena *arena, ColumnDataList *list, ColumnData col)
 
 internal void
 sqlite_exec_query_push(Arena *arena, String8 query, StateDB *state,
-                            ColumnDataList *list, Textual column_meaning_table[])
+                            ColumnDataList *list, TextualTable *column_meaning_table)
 {
-  SQLiteState *sqlite_state = (SQLiteState *)state;
+  SQLiteState *sqlite_state = (SQLiteState *)state->memory;
   if(sqlite_prepare_query(query, state))
   {
     sqlite_state->api.bind_int (sqlite_state->statement, 1, 2);
@@ -191,7 +192,7 @@ sqlite_exec_query_push(Arena *arena, String8 query, StateDB *state,
       for(U32 column_idx=0; column_idx <= column_count-1; ++column_idx)
       {      
         ColumnData column = sqlite_column_value(arena, column_idx, state, column_meaning_table);
-        if(column.textual.type != TextType_Null)
+        if(column.text_type != TextType_Null)
         {
           database_column_list_push(arena, list, column);
         }
