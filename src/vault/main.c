@@ -8,12 +8,13 @@
 #include "base/base_inc.h"
 #include "os/os_inc.h"
 // TODO: use inc.h instead
+// #include "html/html_inc.h" -> It currently doesn't work for unknown reasons
+#include "textual/textual_inc.h"
 #include "html/html_base.h"
-#include "html/html_text_table.h"
-// #include "html/html_inc.h"
 
 #include "os/os_inc.c"
 #include "base/base_inc.c"
+#include "textual/textual_inc.c"
 #include "html/html_inc.c"
 
 
@@ -25,7 +26,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   int argc;
   WCHAR **argv_16 = CommandLineToArgvW(command_line, &argc);
   char **argv = push_array(perm_arena, char *, argc);  
-  String8 root_path = os_current_directory(perm_arena);
+
   for(int i = 1;i < argc; ++i) 
   {
     String16 argv16 = str16_cstring((U16*)argv_16[i]);
@@ -35,18 +36,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   
   if(argc > 1) 
   {
-    String8 target_path = str8((U8*)argv[1], cstr8_length((U8*)argv[1]));
-    OS_FileInfoList *info_list = push_array(perm_arena, OS_FileInfoList, 1);
-    os_push_files_infos(perm_arena, target_path, OS_FileIterFlag_SkipHiddenFiles, info_list);
     
-    String8 full_errors = html_parse(perm_arena, info_list);
-    String8 log_file_path = push_str8_cat(perm_arena, root_path, str8_lit("\\logs.txt"));
-    if(argc >= 2)
-    {
-        log_file_path = push_str8_cat(perm_arena, str8((U8*)argv[2], cstr8_length((U8*)argv[2])), str8_lit("\\logs.txt"));
-    }
-    os_write_data_to_file_path(perm_arena, log_file_path, full_errors);
-    int a = 0;
   }
   
   return 0;

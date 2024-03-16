@@ -13,3 +13,5 @@ public_2
 src/engine.code-workspace
 build/pt
 build/vc140.pdb
+
+build_dev.bat
