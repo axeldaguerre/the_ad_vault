@@ -1,16 +1,15 @@
 #ifndef DATABASE_BASE_H
 # define DATABASE_BASE_H
+// TODO: It's quite wrong, macro shouldn't exists
+#define COL_TEXT(name, type) { 0, {(U8 *)name, sizeof(name) - 1}, type }
 
-#define COL_TEXT(name, type) { {(U8 *)name, sizeof(name) - 1}, type }
-
-typedef U32 DB_Error;
+typedef U32 DBError;
 enum
 {
-  DB_Error_Null          = (0 << 0),
-  DB_Error_Wrong_Query   = (1 << 0),
-  DB_Error_Cant_Connect  = (1 << 1),
-  DB_Error_Library       = (1 << 2),
-  DB_Error_query_failed  = (1 << 3),
+  DBError_Null          = (0 << 0),
+  DBError_Query         = (1 << 0),
+  DBError_Connexion     = (1 << 1),
+  DBError_Library       = (1 << 2),
 };
 
 typedef U32 ColumnType;
@@ -26,24 +25,31 @@ enum
 typedef struct ColumnData ColumnData;
 struct ColumnData 
 {
+  ColumnData *next_sibbling;
   ColumnType type;
-  TextType   text_type;
+  TextType   textual_type;
   String8    value;
   String8    name;
 };
 
-typedef struct ColumnDataNode ColumnDataNode;
-struct ColumnDataNode
+typedef struct EntryDataDB EntryDataDB;
+struct EntryDataDB 
 {
-  ColumnDataNode *next;
-  ColumnData     col;
+  ColumnData data;
 };
 
-typedef struct ColumnDataList ColumnDataList;
-struct ColumnDataList
+typedef struct EntryDataDBNode EntryDataDBNode;
+struct EntryDataDBNode
 {
-  ColumnDataNode *first;
-  ColumnDataNode *last;
+  EntryDataDBNode *next;
+  EntryDataDB      entry;
+};
+
+typedef struct EntryDataDBList EntryDataDBList;
+struct EntryDataDBList
+{
+  EntryDataDBNode *first;
+  EntryDataDBNode *last;
   U64           node_count;
 };
 
@@ -60,11 +66,18 @@ struct StateDB
   
   OS_Handle lib;
   B32       is_initialized;
-  DB_Error  error;
+  DBError  errors;
   TypeDB    db_type;
   U8        memory[200];
 };
 
-
+typedef U32 StepFlags;
+enum
+{
+  StepFlag_Null,
+  StepFlag_Row,
+  StepFlag_Done,
+  StepFlag_Error,
+};
 
 #endif

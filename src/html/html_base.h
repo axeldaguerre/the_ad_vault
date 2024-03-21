@@ -60,10 +60,10 @@ struct HTMLTagEncoding
   HTMLTagType          type;
   HTMLTagEnclosingType enclosing_type;
   String8              tag_name;
-  TextType             text_type;
+  TextType             text_types[5]; // TODO: no constant size
 };
 
-HTMLTagEncoding html_encoding_table[] =
+internal HTMLTagEncoding html_encoding_table[] =
 {
  #include "html_tag_table.inl"
 };
@@ -75,10 +75,17 @@ html_get_encoding_from_meaning(TextType type)
   for(U32 idx = 0; idx < ArrayCount(html_encoding_table); ++idx)
   {
     HTMLTagEncoding encoding = html_encoding_table[idx];
-    if(encoding.text_type == type)
-    {
-      result = encoding;
-    }
+    for(U8 text_type_idx = 0; 
+      text_type_idx < ArrayCount(encoding.text_types); 
+      ++text_type_idx)
+      {
+        if(encoding.text_types[text_type_idx] == type)
+        {
+          result = encoding;
+          break;
+        }
+      }
+    
   }
   return result;
 }
@@ -145,6 +152,5 @@ struct ReadingContent
   HTMLElementList html;
   String8          text;
 };
-
 
 #endif

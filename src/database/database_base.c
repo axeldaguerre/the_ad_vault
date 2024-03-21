@@ -27,28 +27,172 @@ database_close(StateDB *state)
   return result;
 }
 
-internal ColumnDataList*
-database_exec_query(Arena *arena, String8 query, StateDB *state,
-                    TextualTable *textual_table)
+internal EntryDataDBList*
+database_exec(Arena *arena, String8 query, StateDB *state, TextualTable *table)
 {
-  ColumnDataList *result = push_array(arena, ColumnDataList, 1);
+  EntryDataDBList *result = push_array(arena, EntryDataDBList, 1);
+
   if(state->db_type == TypeDB_SQLITE)
   {
-    sqlite_exec_query_push(arena, query, state, result, textual_table);
+    if(!sqlite_prepare_query(query, state))
+    {
+      state->errors = DBError_Query;
+      return result;
+    };
+    int column_count = sqlite_column_count(state);
+    
+    // TODO: better looping, a while or do while. 
+    //       currently first step_flags == StepFlag_Null
+    for(int step_flag = StepFlag_Null;
+        step_flag != StepFlag_Done;
+        step_flag = sqlite_step_query(state)) 
+    {
+      if(step_flag == StepFlag_Error) 
+      {
+        state->errors = DBError_Query;
+         break;
+      }
+      else if(step_flag != StepFlag_Row)
+      {
+        continue;
+      }
+      
+      EntryDataDB *entry     = push_array(arena, EntryDataDB, 1);
+      ColumnData  *first_col = {0};
+      ColumnData  *last_col  = {0};
+      for(U8 column_idx = 0; column_idx <= column_count-1; ++column_idx)
+      {
+        ColumnData *column = sqlite_column_value(arena, column_idx, state, table);
+        if(column->textual_type != TextType_Null)
+        {
+          // TODO: MACRO or procedure (search to see others)
+          if(last_col)
+          {
+            last_col->next_sibbling = column;
+          }
+          else
+          {
+            first_col = column;
+          }
+          last_col = column;
+        }        
+      }
+      entry->data = *first_col;
+      database_entry_list_push(arena, result, entry);
+    }
+    if(!sqlite_finalize_statement(state))
+    {
+      state->errors = DBError_Query;
+    }
   }
   return result;
 }
 
-internal TextualList*
-database_textual_from_col(Arena *arena, ColumnDataList *col_list)
+internal void
+database_textual_from_entry_list_push(Arena *arena, EntryDataDBList *entry_list,
+                                      TextualList *out)
 {
-  TextualList *result = push_array(arena, TextualList, 1);
-  for(ColumnDataNode *node = col_list->first; node != 0; node = node->next)
+  for(EntryDataDBNode *node = entry_list->first; 
+      node != 0; 
+      node = node->next)
   {
-    Textual textual = {0};
-    textual_list_push(arena, result, textual);
-    
-   
+    Textual  *first_textual = {0};
+    Textual  *last_textual  = {0};
+    for(ColumnData *data = &node->entry.data; 
+        data != 0; 
+        data = data->next_sibbling)
+    {
+      Textual *textual = push_array(arena, Textual, 1);
+      textual->type = node->entry.data.textual_type;
+      textual->text = node->entry.data.value;
+      // TODO: MACRO or procedure (search to see others)
+      if(last_textual)
+      {
+        last_textual->next_sibbling = textual;
+      }
+      else
+      {
+        first_textual = textual;
+      }
+      last_textual = textual;
+    }
+    textual_list_push(arena, out, first_textual);
   }
-  return result;
-}  
+}
+
+internal void
+database_print_error(StateDB *state)
+{
+  if(!state->errors & DBError_Null)
+  {
+    printf("DB Error(s): \n");
+  } 
+  if((!state->errors & DBError_Query))
+  {
+    printf("Query failed\n" );
+  }
+  if((!state->errors & DBError_Connexion))
+  {
+    printf("Connexion failed\n" );
+  }
+  if((!state->errors & DBError_Library))
+  {
+    printf("Can't find Database DLL \n");
+  }
+}
+
+internal void
+database_append_node(Arena *arena, TextualList *list, TextualNode *in)
+{
+  B32 match = 0;
+  // AssertAlways(in->textual.type == TextType_Title);
+  for(TextualNode *node = list->first; 
+      node != 0; 
+      node = node->next)
+  {
+    // AssertAlways(node->textual.type == TextType_Title);
+    if(str8_match(node->textual.text, in->textual.text, 0))
+    {
+      node->next = in;
+      match = 1;
+      break;
+    }
+  }
+  if(!match)
+  {
+    list->last = in;
+  }
+}
+
+internal void
+database_to_textual(Arena *arena, EntryDataDBList *list, Textual *table, 
+                    TextualList *out)
+{
+  for(EntryDataDBNode *node = list->first; node != 0; node = node->next)
+  {
+    Textual *first_textual = {0};
+    Textual *last_textual = {0};
+    
+    for(ColumnData *data = &node->entry.data; 
+        data != 0; 
+        data = data->next_sibbling)
+    {
+      Textual *textual = push_array(arena, Textual, 1);  
+      textual->text = push_str8_copy(arena, data->value);
+      textual->type = data->textual_type;
+      
+      if(last_textual)
+      {
+        last_textual->next_sibbling = textual;
+      }
+      else
+      {
+       first_textual = textual; 
+      }
+      last_textual = textual;
+    }
+    
+    textual_list_push(arena, out, first_textual);
+    // database_append_node(arena, out, node_textual);
+  }
+}

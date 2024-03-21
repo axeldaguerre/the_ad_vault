@@ -1,10 +1,11 @@
 internal TextualNode*
-textual_list_push(Arena *arena, TextualList *list, Textual textual)
+textual_list_push(Arena *arena, TextualList *list, Textual *textual)
 { 
-  TextualNode *node = push_array_no_zero(arena, TextualNode, 1);
+  TextualNode *node = push_array(arena, TextualNode, 1);
+  MemoryCopyStruct(&node->textual, textual);
+  node->textual.text = push_str8_copy(arena, textual->text);
   SLLQueuePush(list->first, list->last, node);
   list->node_count += 1;
-  node->textual = textual;
   return node;
 }
 
