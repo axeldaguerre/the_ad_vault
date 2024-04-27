@@ -16,8 +16,10 @@ database_entry_list_push(Arena *arena, EntryDataDBList *list, EntryDataDB *entry
 }
 
 internal EntryDataDBNode*
-database_entry_list_push_node(Arena *arena, EntryDataDBList *list, EntryDataDBNode *node)
+database_entry_list_push_node(Arena *arena, EntryDataDBList *list, EntryDataDBNode *entry)
 { 
+  EntryDataDBNode *node = push_array(arena, EntryDataDBNode, 1);
+  MemoryCopyStruct(&node->entry, entry);
   SLLQueuePush(list->first, list->last, node);
   list->node_count += 1;  
   return node;

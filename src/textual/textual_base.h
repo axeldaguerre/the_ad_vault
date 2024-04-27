@@ -1,31 +1,43 @@
 #ifndef TEXTUAL_BASE_H
 # define TEXTUAL_BASE_H
 
-typedef U32 TextType;
-enum
-{
-  TextType_Null,
 
-  TextType_Unmeaningfull,
-  TextType_Title,
-  TextType_Heading1,
-  TextType_Heading2,
-  TextType_Heading3,
-  TextType_Paragraph,
-  TextType_Link,
-  TextType_Structural,
-  TextType_Esthetic,
-  TextType_Visual,
-  TextType_Code,
-  TextType_Date,
+  typedef U32 TextType;
+  enum
+  {
+    TextType_Null          = (1 << 0),
+
+    TextType_Unmeaningfull = (1 << 1),
+    TextType_Title         = (1 << 2),
+    TextType_Heading1      = (1 << 3),
+    TextType_Heading2      = (1 << 4),
+    TextType_Heading3      = (1 << 5),
+    TextType_Paragraph     = (1 << 6),
+    TextType_Link          = (1 << 7),
+    TextType_Structural    = (1 << 8),
+    TextType_Esthetic      = (1 << 9),
+    TextType_Visual        = (1 << 10),
+    TextType_Code          = (1 << 11),
+    TextType_Date          = (1 << 12),
+    TextType_Parent_List   = (1 << 13),
+    TextType_Item_List     = (1 << 14),
+  };
+
+typedef struct TextualFormat TextualFormat;
+struct TextualFormat
+{
+  String8 pre;
+  String8 post;
 };
 
 typedef struct Textual Textual;
 struct Textual
 {
-  Textual *next_sibbling;
-  String8  text;
-  TextType type;
+  Textual      *first_sub_textual;
+  Textual      *next_sibbling;
+  String8       text;
+  TextType      type;
+  TextualFormat join;
 };
 
 typedef struct TextualNode TextualNode;
