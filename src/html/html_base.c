@@ -230,16 +230,7 @@ html_parse_element_paired(Arena *arena, HTMLParser *parser, HTMLTag *tag)
     HTMLElement *element = html_parse_element(arena, parser);
     if(element)
     { 
-      // TODO: MACRO or procedure (search to see others)     
-      if(last_child)
-      {
-        last_child->next_sibbling = element;
-      }
-      else
-      {
-        first_child = element;
-      }
-      last_child = element;  
+      AppendLast(first_child, last_child, last_child->next_sibbling, element);
     }
   }
   return first_child;
@@ -388,16 +379,7 @@ html_get_root_doc(Arena *arena)
   {    
     HTMLTagType tag_type = types[tag_idx];
     HTMLElement *element = html_create_element_from_tag_type(arena, tag_type);
-    // TODO: MACRO or procedure (search to see others)
-    if(last_el)
-    {
-      last_el->first_sub_element = element;
-    }
-    else
-    {
-      first_el = element;
-    }
-    last_el = element;
+    AppendLast(first_el, last_el, last_el->next_sibbling, element);
   }
   return first_el;
 }
@@ -436,26 +418,12 @@ html_element_from_textual(Arena *arena, Textual *textual)
           sub_textual = sub_textual->first_sub_textual)
       {        
         HTMLElement *el = html_create_element_from_textual(arena, *sub_textual);
-        if(last_sub)
-        {
-          last_sub->next_sibbling = el; 
-        }
-        else
-        {
-          first_sub = el;
-        }
-        last_sub = el;
+        AppendLast(first_sub, last_sub, last_sub->next_sibbling, el);
       }
       
       root->next_sibbling = first_sub;
-      if(last)
-      {
-        last->next_sibbling = root; 
-      }
-      else
-      {
-        first = root;
-      }
+      AppendLast(first, last, last->next_sibbling, root);
+      // TODO: macro not usable when unrolling two lists
       last = last_sub;
     }
     result = first;
