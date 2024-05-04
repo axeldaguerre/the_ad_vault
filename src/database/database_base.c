@@ -80,19 +80,19 @@ database_exec_push_list(Arena *arena, String8 query, StateDB *state,
 internal void
 database_print_error(StateDB *state)
 {
-  if(!state->errors & DBError_Null)
+  if(!(state->errors & DBError_Null))
   {
     printf("DB Error(s): \n");
   } 
-  if((!state->errors & DBError_Query))
+  if(!(state->errors & DBError_Query))
   {
     printf("Query failed\n" );
   }
-  if((!state->errors & DBError_Connexion))
+  if(!(state->errors & DBError_Connexion))
   {
     printf("Connexion failed\n" );
   }
-  if((!state->errors & DBError_Library))
+  if(!(state->errors & DBError_Library))
   {
     printf("Can't find Database DLL \n");
   }
