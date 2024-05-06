@@ -43,8 +43,11 @@ internal HTMLParser *
 html_init_parser(Arena *arena, String8 str)
 {
   HTMLParser *result = push_array(arena, HTMLParser, 1);
-  result->string = push_str8_copy(arena, str);
-  result->string = str;
+  if(str.size)
+  {
+    result->string = push_str8_copy(arena, str);
+    result->string = str;
+  }
   result->error.messages = push_array(arena, String8List, 1);
   
   return result;
@@ -392,6 +395,8 @@ html_parse_element(Arena *arena, HTMLParser *parser, HTMLTag *from_tag)
       AppendLast(first, last, last->next_sibbling, el);
     }
     result->first_sub_element = first;
+    result->content.str = parser->string.str + result->tags[0]->last_token.range.max;
+    result->content.size = result->tags[1]->first_token.range.min - result->tags[0]->last_token.range.max;
   }
   
   html_analyse_element(parser, result);
@@ -528,6 +533,7 @@ html_append_into(Arena *arena, HTMLElement *first_el, HTMLElement *root)
       last_el !=0; 
       last_el = last_el->first_sub_element)
   {
+    
     if(!last_el->first_sub_element)
     {
       last_el->first_sub_element = first_el;
@@ -536,21 +542,60 @@ html_append_into(Arena *arena, HTMLElement *first_el, HTMLElement *root)
   }
 }
 
-internal HTMLElement *
-html_get_root_doc(Arena *arena)
+internal void
+html_append_first_sub(HTMLParser *parser, Arena *arena, HTMLElement *root, 
+                      U64 tag_type_root, HTMLElement *el_to_append)
 {
-  HTMLElement *first_el = push_array(arena, HTMLElement, 1);
-  HTMLElement *last_el = {0};
-  U64 types[] = { HTMLTagType_HTML, HTMLTagType_HEAD, HTMLTagType_BODY, HTMLTagType_DIV };
-  for(U8 tag_idx = 0; tag_idx < ArrayCount(types); ++tag_idx)
-  {    
-    U64 tag_type = types[tag_idx];
-    HTMLElement *element = html_create_element_from_tag_type(arena, tag_type);
-    AppendLast(first_el, last_el, last_el->next_sibbling, element);
+  //TODO: Never tested
+  HTMLTag *invariant = html_create_tag_from_tag_type(arena, tag_type_root);
+  
+  if(!(tag_type_root & UNIQUE_TAGS) || 
+      invariant->enclosing_type != HTMLTagEnclosingType_Paired)
+  {
+    str8_list_push(arena, parser->error.messages, str8_lit("Elements with unique tag can't have sub element"));
+    parser->error.type = HTMLErrorType_wrong_enclosing_type;
   }
   
-  return first_el;
+  for(HTMLElement *root_el = root; 
+      root_el != 0; 
+      root_el = root_el->first_sub_element)
+  {
+    if(root_el->tags[0]->type == tag_type_root)
+    {
+      el_to_append->next_sibbling = root_el->first_sub_element;
+      root_el->first_sub_element = el_to_append;
+      
+      break;
+    }
+  }
 }
+
+internal HTMLElement *
+html_get_root_doc(Arena *arena, String8 title)
+{
+  HTMLElement *doctype = html_create_element_from_tag_type(arena, HTMLTagType_DOCTYPE);
+  HTMLElement *html    = html_create_element_from_tag_type(arena, HTMLTagType_HTML);
+  HTMLElement *head    = html_create_element_from_tag_type(arena, HTMLTagType_HEAD);
+  HTMLElement *body    = html_create_element_from_tag_type(arena, HTMLTagType_BODY);
+  HTMLElement *div     = html_create_element_from_tag_type(arena, HTMLTagType_DIV);
+  
+  doctype->next_sibbling = html;
+  html->first_sub_element = head;
+  head->next_sibbling = body;
+  body->first_sub_element = div;
+  
+  if(title.size)
+  {
+    HTMLElement *h1 = html_create_element_from_tag_type(arena, HTMLTagType_H1);
+    
+    String8 h1_content = push_str8_copy(arena, title);
+    h1->content = h1_content;
+    div->first_sub_element = h1;
+  }
+  
+  return doctype;
+}
+
 /*
     NOTE: HTMLElement and Textual differ when it comes to sibbling and first_sub
           there is work to do in terms of the implementation of the data types. Textual 
@@ -561,7 +606,7 @@ html_get_root_doc(Arena *arena)
           in terms of conceptual meaning. In high level, html permits meaning representation of text and more 
           compared to textual that is only relation between text 
           So we unroll the first_sub_textual AND unroll the next_sibbling textual
-          In short: textual / html element's first sub element differ. htmlelement have +1 level relatioship 
+          In short: textual / html element's first sub element differ. html element have +1 level relatioship 
   */
 internal HTMLElement *
 html_element_from_textual(Arena *arena, Textual *textual)
@@ -672,4 +717,37 @@ html_try_get_first_element_from_tag_type(HTMLElement *element, U64 type)
     }
   } 
   return result;
+}
+
+
+internal String8
+html_get_title_content(HTMLElement *el)
+{
+  String8 title_content = {0};
+  
+  for(HTMLElement *sib = el;
+      sib != 0;
+      sib = sib->next_sibbling)
+  {
+    if(el->tags[0]->type == HTMLTagType_H1)
+    {
+      title_content = el->content;
+      break;
+    }
+    
+    for(HTMLElement *sub_el = sib->first_sub_element;
+        sub_el != 0;
+        sub_el = sub_el->next_sibbling)
+    {
+      if(sub_el->tags[0]->type == HTMLTagType_H1)
+      {
+        title_content = sub_el->content;
+        break;
+      }
+      html_get_title_content(sub_el->first_sub_element);
+    }
+    html_get_title_content(sib->first_sub_element);
+  }
+  
+  return title_content;
 }

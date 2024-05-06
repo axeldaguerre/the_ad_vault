@@ -1,18 +1,19 @@
 #ifndef HTML_BASE_H
 #define HTML_BASE_H
 
+#define UNIQUE_TAGS HTMLTagType_MAIN|HTMLTagType_DOCTYPE|HTMLTagType_HTML|HTMLTagType_BODY|HTMLTagType_FOOTER
 // TODO: better names
 typedef U32 RawTokenType;
 enum
 {
   RawTokenType_null                           = 0,
   
-  RawTokenType_whitespace                     = (1 << 1),
-  RawTokenType_angle_bracket_open             = (1 << 2),
-  RawTokenType_angle_bracket_close            = (1 << 3),
-  RawTokenType_angle_bracket_open_then_slash  = (1 << 4),
-  RawTokenType_angle_slash_then_bracket_close = (1 << 5),
-  RawTokenType_slash                          = (1 << 6),
+  RawTokenType_whitespace                     = (1 << 0),
+  RawTokenType_angle_bracket_open             = (1 << 1),
+  RawTokenType_angle_bracket_close            = (1 << 2),
+  RawTokenType_angle_bracket_open_then_slash  = (1 << 3),
+  RawTokenType_angle_slash_then_bracket_close = (1 << 4),
+  RawTokenType_slash                          = (1 << 5),
 };
 
 typedef struct HTMLToken HTMLToken;
@@ -45,6 +46,7 @@ struct HTMLElement
   HTMLElement *first_sub_element;
   HTMLElement *next_sibbling;
   HTMLTag     *tags[2];
+  String8      content;
   U8           level_deep;
 };
 
