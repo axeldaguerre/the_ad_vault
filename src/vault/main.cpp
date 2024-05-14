@@ -7,10 +7,8 @@
 
 #include "base/base_inc.h"
 #include "os/os_inc.h"
-// TODO: use inc.h instead
-// #include "html/html_inc.h" -> It currently doesn't work for unknown reasons
 #include "textual/textual_inc.h"
-#include "html/html_base.h"
+#include "html/html_inc.h"
 
 #include "os/os_inc.c"
 #include "base/base_inc.c"
