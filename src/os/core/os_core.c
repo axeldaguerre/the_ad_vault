@@ -1,3 +1,9 @@
+internal B32
+os_file_info_is_nil(OS_FileInfoNode *file_info)
+{
+  return file_info == 0 || file_info == &os_f_info_n_g_nil;
+}
+
 internal OS_Handle
 os_handle_zero()
 {

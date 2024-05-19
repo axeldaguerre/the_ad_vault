@@ -5,6 +5,10 @@
     *Element* is specified as the full piece of informations of a specific content
     *Tag* is the data marking the start and end of an element
 */
+/*
+  TODO: add a void element specification ? 
+        void element means they do can't have children, it means self closing and single tag element can't have children and seems to be very similar in the way they are parsed
+*/ 
 typedef U8 HTMLTagEnclosingType;
 enum 
 { 

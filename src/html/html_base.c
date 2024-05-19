@@ -16,6 +16,19 @@ html_element_list_push(Arena *arena, HTMLElementList *list, HTMLElement element)
   return node;
 }
 
+internal HTMLElementAttributeNode *
+html_attribute_push(Arena *arena, HTMLElementAttribute attribute, 
+                    HTMLElementAttributeList *list)
+{  
+  HTMLElementAttributeNode *n = push_array(arena, HTMLElementAttributeNode, 1);
+  SLLQueuePush(list->first, list->last, n);
+  n->attribute.name = push_str8_copy(arena, attribute.name);
+  n->attribute.value = push_str8_copy(arena, attribute.value);
+  list->node_count++;
+  
+  return n;
+}
+
 internal B32  
 html_child_is_inside_parent_tags(Arena *arena, HTMLElementNode *parent, HTMLElementNode *child)
 {
@@ -60,21 +73,18 @@ html_child_is_inside_parent_tags(Arena *arena, HTMLElementNode *parent, HTMLElem
   return result;
 }
 
-internal HTMLTag *
-html_tag_from_inv(Arena *arena, HTMLTagInvariant *inv)
+internal void
+html_tag_from_inv(Arena *arena, HTMLTagInvariant *inv, HTMLTag *tag)
 {
-  HTMLTag *result = push_array(arena, HTMLTag, 1);
   if(inv)
   {
-    result->tag = inv->tag;
-    result->content_type = inv->content_type;
-    result->flow_type = inv->flow_type;
-    result->enclosing_type = inv->enclosing_type;
-    result->tag_name = inv->tag_name;
-    result->meaning = inv->meaning;
+    tag->tag = inv->tag;
+    tag->content_type = inv->content_type;
+    tag->flow_type = inv->flow_type;
+    tag->enclosing_type = inv->enclosing_type;
+    tag->tag_name = inv->tag_name;
+    tag->meaning = inv->meaning;
   }
-    
-  return result;
 }
 
 internal HTMLParser *
@@ -143,7 +153,7 @@ html_parser_set_error(Arena *arena, HTMLParser *parser, U64 at,
   output = push_str8_cat(arena, output, html_print_error_type(type));
   
   parser->error.at = at;
-  parser->error.type = type;
+  parser->error.type |= type;
   str8_list_push(arena, parser->error.messages, output);
 }
 
@@ -204,6 +214,11 @@ html_get_token_type(String8 string, U64 at)
   result.range.max = at+1;
   
   U8 value = string.str[at];
+  if(char_is_whitespace(value))
+  {
+    result.type = RawTokenType_whitespace;
+    return result;
+  } 
   
   switch(value)
   {
@@ -234,10 +249,22 @@ html_get_token_type(String8 string, U64 at)
     case '>': 
     { 
       result.type = RawTokenType_angle_bracket_close;
-    } break;      
-    case ' ': 
+    } break;       
+    case '\"': 
     { 
-      result.type = RawTokenType_whitespace;
+      result.type = RawTokenType_double_quote;
+    } break;
+    case '\'': 
+    { 
+      result.type = RawTokenType_simple_quote;
+    } break;
+    case '=': 
+    { 
+      result.type = RawTokenType_equal;
+    } break;
+    default:
+    {
+       result.type = RawTokenType_dummy;
     } break;
   }
   
@@ -294,12 +321,13 @@ html_next_token(HTMLParser *parser)
                         RawTokenType_angle_slash_then_bracket_close;
   
   U64 at = parser->at;
-   
+  
   while(html_is_parsing(parser) && !(result.type & match))
   {
     result = html_get_token_type(parser->string, at);
     at += result.range.max-result.range.min;
   }
+  
   parser->at = at;
   
   return result;
@@ -318,7 +346,9 @@ html_next_tag(Arena *arena, HTMLParser *parser)
     U64 str_end = ClampTop(parser->string.size, tag->last_token.range.min);
     U64 str_start = ClampTop(str_end, tag->first_token.range.max);
     String8 tag_name = str8((parser->string.str + str_start), str_end-str_start);
-    tag = html_tag_from_inv(arena, html_get_invariant_from_tag_name(arena, tag_name));
+    HTMLTagInvariant *inv = html_get_invariant_from_tag_name(arena, tag_name);
+    html_tag_from_inv(arena, inv, tag);
+     
     
     if(tag && parser->skip_until_tag == HTMLTag_NULL) break;
     // NOTE: pre & code can have html meaningfull tokens, but are dummy
@@ -342,56 +372,79 @@ html_next_tag(Arena *arena, HTMLParser *parser)
   return tag;
 }
 
-internal HTMLElementNode *
-html_parse_element(Arena *arena, HTMLParser *parser, HTMLTag *from_tag)
+internal HTMLElementAttributeList *
+html_parse_attributes(Arena *arena, HTMLParser *parser, HTMLElementNode *el_node)
 {
-  HTMLElementNode *root_n = push_array(arena, HTMLElementNode, 1);  
-
-  if(from_tag)
+  /*
+     TODO: because we use simple while and the html parser function, as soon as we add another RawTokenType we 
+            will break the computation.
+  */
+  HTMLElementAttributeList *list = push_array(arena, HTMLElementAttributeList, 1);
+  if(!el_node->element.tags[0]) return list;
+  
+  U8 *start_str = parser->string.str + el_node->element.tags[0]->first_token.range.max + el_node->element.tags[0]->tag_name.size;
+  U8 *end_str = parser->string.str + el_node->element.tags[0]->last_token.range.min;
+  String8 string = str8_range(start_str, end_str);
+  // TODO: HTMLToken is hacked here, because it's not represented as a token but as dummy start/end or whitespace start/end 
+  HTMLToken token = {0};
+  String8 value = {0};
+  HTMLElementAttribute attribute = {0};
+  U64 at = 0;
+  RawTokenType quotes = RawTokenType_simple_quote|RawTokenType_double_quote;
+  
+  while(at <= string.size)
   {
-    root_n->element.tags[0] = from_tag;
-  }
-  else
-  {
-    root_n->element.tags[0] = html_next_tag(arena, parser);
-  }
-
-  if(root_n->element.tags[0]->enclosing_type == HTMLTagEnclosingType_Paired)
-  {
-    HTMLTag *tag   = {0};
-    for(;;)
+    /*
+      NOTE: while parsing spec like html attributes, it result in nicer code when you delay the parsing the maximum. 
+            Because that's always the next parsing that will tell you what was the previous one. 
+    */   
+    token = html_get_token_type(string, at++);   
+    
+    if(token.type == RawTokenType_dummy)
     {
-      tag = html_next_tag(arena, parser);
-
-      if(!html_is_parsing(parser) || 
-         (!html_tag_is_opening(tag) && tag->tag == root_n->element.tags[0]->tag))
+      HTMLToken start = token;
+      while(at <= string.size && 
+            token.type == RawTokenType_dummy)
       {
-        root_n->element.tags[1] = tag;
-        break;
+        token = html_get_token_type(string, at++);
+      }
+      attribute.value = str8(string.str + start.range.min, token.range.min-start.range.min);
+      
+      while(at <= string.size && 
+            token.type == RawTokenType_whitespace)
+      {
+        token = html_get_token_type(string, at++);
       }
       
-      if(tag->tag != root_n->element.tags[0]->tag && 
-         !html_tag_is_opening(tag)) 
+      if(token.type == RawTokenType_equal)
       {
-        html_parser_set_error(arena, parser, tag->first_token.range.min,
-                              HTMLErrorType_unexpected_token, 
-                              str8_lit("From opening tag, finding a closing tag from different type is not allowed"));
-        break;
+        attribute.name = attribute.value;
+        attribute.value = {0};
+        
+        token = html_get_token_type(string, at++);
+        while(at <= string.size && 
+              token.type == RawTokenType_whitespace)
+        {
+          token = html_get_token_type(string, at++);
+        }        
+        AssertAlways(token.type == RawTokenType_simple_quote || token.type == RawTokenType_double_quote);
+                     
+        token = html_get_token_type(string, at++);
+        AssertAlways(token.type == RawTokenType_dummy);
+        
+        start = token;        
+        while(at <= string.size && !(token.type & quotes))
+        {
+          token = html_get_token_type(string, at++);
+        }                
+        attribute.value = str8(string.str + start.range.min, token.range.min-start.range.min);
+        token = html_get_token_type(string, at++);        
       }
-      HTMLElementNode *el_node = html_parse_element(arena, parser, tag);
-      DLLPushBack_NPZ(&html_el_n_g_nil, 
-                      root_n->first, root_n->last, 
-                      el_node, next, prev);
-    }
-    
-    root_n->element.raw.data.str = parser->string.str + root_n->element.tags[0]->last_token.range.max;
-    root_n->element.raw.data.size = root_n->element.tags[1]->first_token.range.min - root_n->element.tags[0]->last_token.range.max;
-    root_n->element.raw.meaning = root_n->element.tags[1]->meaning;
+      html_attribute_push(arena, attribute, list);
+      attribute = {0};
+    }          
   }
-  
-  html_analyse_element(parser, root_n);
-  
-  return root_n;
+  return list;
 }
 
 internal String8
@@ -420,13 +473,57 @@ html_get_error_msg(Arena *arena, HTMLParser *parser, String8 file_path)
   return result;
 }
 
+internal HTMLElementNode 
+html_parse_element(Arena *arena, HTMLParser *parser, HTMLTag *first_tag, HTMLElementNode *root_n)
+{
+  HTMLElementNode el_node = {0};
+  first_tag = el_node.element.tags[0] = !first_tag ? html_next_tag(arena, parser) : first_tag;
+  if(first_tag->enclosing_type == HTMLTagEnclosingType_Paired)
+  {
+    HTMLTag *next_tag = {0};
+    while(html_is_parsing(parser))
+    {
+      next_tag = html_next_tag(arena, parser);
+      
+      if(!html_tag_is_opening(next_tag))
+      {
+        if(next_tag->tag == first_tag->tag)
+        {
+          el_node.element.tags[1] = next_tag;
+          el_node.element.raw.data.str = parser->string.str + first_tag->last_token.range.max;
+          el_node.element.raw.data.size = next_tag->first_token.range.min - first_tag->last_token.range.max;
+        }   
+        else
+        {
+          html_parser_set_error(arena, parser, 
+                                next_tag->first_token.range.min,
+                                HTMLErrorType_unexpected_token, 
+                                str8_lit("From opening tag, finding a closing tag from different type is not allowed"));
+        }
+        break;
+      }
+      else
+      {
+        parser->open_tag_count++;
+        HTMLElementNode first_child = html_parse_element(arena, parser, next_tag, root_n);
+        DLLPushBack_NPZ(&html_el_n_g_nil, el_node.first, el_node.last, &first_child, next, prev);
+      }
+    }
+  }
+  el_node.element.attributes = html_parse_attributes(arena, parser, &el_node);
+  parser->open_tag_count++;
+  el_node.parent = root_n;
+  
+  return el_node;
+}
+  
 internal String8
 html_parse(Arena *arena, OS_FileInfoList *info_list)
-{
+ {
   String8 result = {0};
   String8List *error_messages = push_array(arena, String8List, 1);
   for(OS_FileInfoNode *node = info_list->first;
-      node != 0;
+      !os_file_info_is_nil(node);
       node = node->next) 
   {
     StringMatchFlags match_flags = StringMatchFlag_CaseInsensitive;
@@ -437,6 +534,7 @@ html_parse(Arena *arena, OS_FileInfoList *info_list)
     OS_Handle handle = os_file_open(arena, file_name, OS_AccessFlag_Read);
     if(os_handle_match(handle, os_handle_zero())) continue;
     
+    
     U64 size_file = node->info.props.size;
     U8 *memory = push_array_no_zero(arena, U8, size_file);
     U64 size = os_file_read(handle, rng_1u64(0, size_file), memory);
@@ -446,10 +544,10 @@ html_parse(Arena *arena, OS_FileInfoList *info_list)
     join.post = str8_lit("\n");
     HTMLElementNode *root_n = push_array(arena, HTMLElementNode, 1);
     while(html_is_parsing(parser))
-    {
-      HTMLElementNode *el_n = html_parse_element(arena, parser, 0);
-      DLLPushBack_NPZ(&html_el_n_g_nil, root_n->first, root_n->last, el_n, next, prev);
-      
+    { 
+           
+      HTMLElementNode el_node = html_parse_element(arena, parser, {0}, root_n);
+      DLLPushBack_NPZ(&html_el_n_g_nil, root_n->first, root_n->last, &el_node, next, prev);
       if(parser->error.type != HTMLErrorType_Null)
       {
         String8 error_msg = html_get_error_msg(arena, parser, file_name);
@@ -472,8 +570,10 @@ html_create_element_from_tag_type(Arena *arena, U64 type)
     if(type == invariant->tag)
     {
       //TODO: Do the real computation (search this line to see other)
-      result->element.tags[0] = html_tag_from_inv(arena, invariant);
-      result->element.tags[1] = html_tag_from_inv(arena, invariant);
+      result->element.tags[0] = push_array_no_zero(arena, HTMLTag, 1);
+      html_tag_from_inv(arena, invariant, result->element.tags[0]);
+      result->element.tags[1] = push_array_no_zero(arena, HTMLTag, 1);
+      html_tag_from_inv(arena, invariant, result->element.tags[1]);      
       break;
     }
   }
@@ -490,16 +590,6 @@ html_get_root_doc_content_node(HTMLElementNode *root)
   
 }
 
-internal HTMLElementAttributeNode *
-html_attribute_push(Arena *arena, HTMLElementAttribute attribute, 
-                    HTMLElementAttributeList *list)
-{  
-  HTMLElementAttributeNode *n = push_array(arena, HTMLElementAttributeNode, 1);
-  SLLQueuePush(list->first, list->last, n);
-  n->attribute = attribute;
-  
-  return n;
-}
 
 internal void
 html_create_attribute_push(Arena *arena, String8 name, String8 value, HTMLElement *el)
@@ -677,7 +767,9 @@ internal HTMLElementNode *
 html_create_el_from_raw(Arena *arena, RawData *raw)
 {
   HTMLElementNode *result = push_array(arena, HTMLElementNode, 1);
-  HTMLTag *tag = html_tag_from_inv(arena, html_find_first_tag_from_meaning(arena, raw->meaning));
+  HTMLTagInvariant *inv = html_find_first_tag_from_meaning(arena, raw->meaning);
+  HTMLTag *tag = push_array_no_zero(arena, HTMLTag, 1);
+  html_tag_from_inv(arena, inv, tag);
   result->element.tags[0] = result->element.tags[1] = tag;
   result->element.raw.meaning = raw->meaning;
   result->element.raw.data = push_str8_copy(arena, raw->data);

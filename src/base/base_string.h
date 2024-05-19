@@ -106,6 +106,7 @@ internal U8            char_to_correct_slash(U8 c);
 
 internal B32           str8_ends_with(String8 string, String8 end, StringMatchFlags flags);
 internal B32           str8_match(String8 a, String8 b, StringMatchFlags);
+internal U64           str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
 
 internal String16      str16(U16 *str, U64 size);
 internal U64           cstr16_length(U16 *str);
@@ -135,7 +136,6 @@ internal String8List   str8_split_by_string_chars(Arena *arena, String8 string, 
 
 internal String8       str8_range(U8 *first, U8 *one_past_last);
 internal String8       str8_cut_from_last_dot(String8 string);
-internal U64           str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
 internal String8       str8_chop_last_dot(String8 string);
 internal String8       str8_prefix(String8 str, U64 size);
 

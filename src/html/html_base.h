@@ -6,13 +6,16 @@ typedef U32 RawTokenType;
 enum
 {
   RawTokenType_null                           = 0,
-  
   RawTokenType_whitespace                     = (1 << 0),
   RawTokenType_angle_bracket_open             = (1 << 1),
-  RawTokenType_angle_bracket_close            = (1 << 2),
-  RawTokenType_angle_bracket_open_then_slash  = (1 << 3),
-  RawTokenType_angle_slash_then_bracket_close = (1 << 4),
-  RawTokenType_slash                          = (1 << 5),
+  RawTokenType_double_quote                   = (1 << 2),
+  RawTokenType_simple_quote                   = (1 << 3),
+  RawTokenType_angle_bracket_close            = (1 << 4),
+  RawTokenType_angle_bracket_open_then_slash  = (1 << 5),
+  RawTokenType_angle_slash_then_bracket_close = (1 << 6),
+  RawTokenType_slash                          = (1 << 7),
+  RawTokenType_equal                          = (1 << 8),
+  RawTokenType_dummy                          = (1 << 9),
 };
 
 typedef struct HTMLToken HTMLToken;
@@ -25,8 +28,15 @@ struct HTMLToken
 typedef struct HTMLElementAttribute HTMLElementAttribute;
 struct HTMLElementAttribute
 {
-  String8 name;
-  String8 value;
+  union
+  {
+    struct
+    {
+      String8 name;  
+      String8 value;
+    };
+    String8 pair[2];
+  };
 };
 
 typedef struct HTMLElementAttributeNode HTMLElementAttributeNode;
